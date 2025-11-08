@@ -4,6 +4,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import Empleado
 from .serializers import EmpleadoSerializer
+import boto3
+import csv
+from io import StringIO
+from django.conf import settings
+
 
 # 🟢 Crear (POST) y Listar (GET todos)
 class EmpleadoListCreateView(APIView):
@@ -54,3 +59,37 @@ class EmpleadoDetailView(APIView):
             return Response({'error': 'Empleado no encontrado'}, status=status.HTTP_404_NOT_FOUND)
         empleado.delete()
         return Response({'mensaje': 'Empleado eliminado correctamente'}, status=status.HTTP_204_NO_CONTENT)
+
+class ExportarEmpleadosS3View(APIView):
+    """
+    Exporta todos los empleados a un archivo CSV en un bucket S3.
+    Requiere que la instancia EC2 tenga un rol IAM con permisos de S3.
+    """
+
+    def post(self, request):
+        try:
+            empleados = Empleado.objects.all().values()
+
+            if not empleados:
+                return Response({'mensaje': 'No hay empleados para exportar'}, status=status.HTTP_200_OK)
+
+            # Crear CSV en memoria
+            csv_buffer = StringIO()
+            writer = csv.DictWriter(csv_buffer, fieldnames=empleados[0].keys())
+            writer.writeheader()
+            writer.writerows(empleados)
+
+            # Cliente S3 (usa IAM Role si está configurado)
+            s3 = boto3.client('s3')
+            bucket_name = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', 'proyectocpn')
+
+            s3.put_object(
+                Bucket=bucket_name,
+                Key='empleados/empleados.csv',
+                Body=csv_buffer.getvalue()
+            )
+
+            return Response({'mensaje': f'Archivo exportado correctamente a S3 ({bucket_name})'}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
