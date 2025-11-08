@@ -8,7 +8,7 @@ import boto3
 import csv
 from io import StringIO
 from django.conf import settings
-
+from django.db import transaction
 
 # 🟢 Crear (POST) y Listar (GET todos)
 class EmpleadoListCreateView(APIView):
@@ -18,10 +18,26 @@ class EmpleadoListCreateView(APIView):
         return Response(serializer.data)
 
     def post(self, request):
-        empleado_data = request.data.get('empleado', request.data)
-        serializer = EmpleadoSerializer(data=empleado_data)
+        # Soporte para crear uno o varios empleados en un mismo request.
+        # Acepta estas formas:
+        #  - JSON object para un solo empleado
+        #  - JSON array para varios empleados
+        #  - { "empleado": { ... } } para un solo empleado
+        #  - { "empleados": [ {...}, {...} ] } para varios
+        data = request.data
+        if isinstance(data, dict) and 'empleados' in data:
+            payload = data['empleados']
+        elif isinstance(data, dict) and 'empleado' in data:
+            payload = data['empleado']
+        else:
+            payload = data
+
+        many = isinstance(payload, list)
+        serializer = EmpleadoSerializer(data=payload, many=many)
         if serializer.is_valid():
-            serializer.save()
+            # Hacer la creación atómica: o se crean todos o ninguno
+            with transaction.atomic():
+                serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
