@@ -2,7 +2,8 @@
 from django.db import models
 
 class Empleado(models.Model):
-    nombre = models.CharField(max_length=100)
+    nombres = models.CharField(max_length=100)
+    apellidos = models.CharField(max_length=100)
     puesto = models.CharField(max_length=100)
     departamento = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
